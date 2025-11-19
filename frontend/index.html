@@ -220,7 +220,11 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         lucide.createIcons();
-        const API_URL = "http://127.0.0.1:8000";
+        // -------------------------------------------------------------------------
+        // URL ATUALIZADA DO BACKEND NO RENDER
+        // -------------------------------------------------------------------------
+        const API_URL = "https://sgl-manager.onrender.com"; 
+        
         let map, polylineLayer, markers = [];
         let currentCalc = null;
         const formatCurrency = (value) => (value || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
