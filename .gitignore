@@ -1,0 +1,20 @@
+Python e Venv
+
+.venv/
+venv/
+pycache/
+*.pyc
+
+Arquivos de Sistema
+
+.DS_Store
+Thumbs.db
+
+Variáveis de Ambiente (Segurança)
+
+.env
+
+Editor
+
+.vscode/
+.idea/

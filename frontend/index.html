@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGL Manager V7.0</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        @layer base { :root { font-family: 'Inter', sans-serif; } }
+        .leaflet-container { background: #f1f5f9; border-radius: 0.75rem; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .tab-active { background-color: #4f46e5; color: white; }
+        .tab-inactive { background-color: transparent; color: #64748b; }
+        .tab-inactive:hover { background-color: #e0e7ff; color: #4f46e5; }
+        
+        .result-card { padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05); }
+        .result-card-highlight { background-color: #4f46e5; color: white; box-shadow: 0 10px 15px -3px rgb(79 70 229 / 0.3); }
+
+        .status-dot { height: 0.5rem; width: 0.5rem; border-radius: 9999px; display: inline-block; margin-right: 0.5rem; }
+        .status-available { background-color: #10b981; box-shadow: 0 0 0 2px #d1fae5; }
+        .status-busy { background-color: #f59e0b; box-shadow: 0 0 0 2px #fef3c7; }
+
+        .custom-icon-div {
+            display: flex; justify-content: center; align-items: center;
+            border-radius: 50%; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans h-screen flex overflow-hidden">
+
+    <aside class="w-64 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col h-full z-20">
+        <div class="p-6 border-b border-slate-100 flex items-center gap-3">
+            <div class="bg-indigo-600 p-2 rounded-lg"><i data-lucide="truck" class="text-white w-6 h-6"></i></div>
+            <div><h1 class="font-bold text-lg leading-tight">SGL Manager</h1><p class="text-xs text-slate-400">Enterprise ERP V7.0</p></div>
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <button onclick="switchTab('calc')" id="nav-calc" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition tab-active"><i data-lucide="calculator" class="w-5 h-5"></i> Cotação</button>
+            <button onclick="switchTab('history')" id="nav-history" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition tab-inactive"><i data-lucide="calendar-clock" class="w-5 h-5"></i> Cronograma</button>
+            <div class="pt-4 pb-2 px-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Cadastros</div>
+            <button onclick="switchTab('fleet')" id="nav-fleet" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition tab-inactive"><i data-lucide="truck" class="w-5 h-5"></i> Frota</button>
+            <button onclick="switchTab('drivers')" id="nav-drivers" class="w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition tab-inactive"><i data-lucide="users" class="w-5 h-5"></i> Motoristas</button>
+        </nav>
+    </aside>
+
+    <main class="flex-1 overflow-y-auto p-8 relative">
+        
+        <!-- COTAÇÃO -->
+        <section id="view-calc" class="max-w-6xl mx-auto space-y-6 fade-in">
+            <h2 class="text-2xl font-bold text-slate-800 mb-4">Cálculo de Frete e Reserva</h2>
+            <div class="grid lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-4 bg-white p-6 rounded-xl shadow-lg border border-slate-200 h-fit">
+                    <form id="calcForm" class="space-y-4">
+                        <div class="space-y-1">
+                            <label class="text-xs font-bold text-slate-500 uppercase block">Rota</label>
+                            <input type="text" id="origem" required class="w-full p-3 border rounded-lg bg-slate-50 focus:bg-white transition outline-none text-sm" placeholder="Origem (ex: São Paulo)">
+                            <input type="text" id="destino" required class="w-full p-3 border rounded-lg bg-slate-50 focus:bg-white transition outline-none text-sm" placeholder="Destino (ex: Curitiba)">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-slate-500 uppercase block">Veículo</label>
+                            <select id="veiculoSelect" required class="w-full mt-1 p-3 border rounded-lg bg-slate-50 outline-none text-sm">
+                                <option value="" disabled selected>Carregando frota...</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 pt-2">
+                             <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase">Diesel (R$/L)</label>
+                                <input type="number" id="precoDiesel" step="0.01" value="6.89" class="w-full mt-1 p-3 border rounded-lg bg-slate-50 text-sm">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase">Diária (R$/Dia)</label>
+                                <input type="number" id="valorDiaria" step="0.01" value="150.00" class="w-full mt-1 p-3 border rounded-lg bg-slate-50 text-sm" title="Valor pago ao motorista para alimentação/estadia">
+                            </div>
+                        </div>
+                        <div class="pt-2">
+                             <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="idaVolta" class="w-4 h-4 text-indigo-600 rounded">
+                                <span class="text-sm font-medium text-slate-700">Ida e Volta</span>
+                            </label>
+                        </div>
+                        <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg mt-2 transition flex justify-center items-center gap-2 shadow-lg shadow-indigo-200">
+                            <span>Calcular Frete</span> <i data-lucide="send-to-back" class="w-4 h-4"></i>
+                        </button>
+                    </form>
+                </div>
+
+                <div id="resultsArea" class="lg:col-span-8 hidden space-y-6">
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div class="result-card result-card-highlight flex flex-col items-center justify-center">
+                            <i data-lucide="wallet" class="w-6 h-6 mb-2 text-indigo-200"></i>
+                            <p class="text-xs font-bold uppercase opacity-80">Preço Final</p>
+                            <h3 class="text-3xl font-bold mt-1" id="resPreco">R$ 0,00</h3>
+                        </div>
+                        <div class="result-card bg-white border border-slate-200 flex flex-col items-center justify-center">
+                            <i data-lucide="fuel" class="w-6 h-6 mb-2 text-amber-500"></i>
+                            <p class="text-xs font-bold uppercase text-slate-500">Paradas</p>
+                            <h3 class="text-3xl font-bold mt-1 text-slate-900" id="resParadas">0</h3>
+                        </div>
+                        <div class="result-card bg-white border border-slate-200 flex flex-col items-center justify-center">
+                            <i data-lucide="clock3" class="w-6 h-6 mb-2 text-emerald-500"></i>
+                            <p class="text-xs font-bold uppercase text-slate-500">Duração</p>
+                            <h3 class="text-3xl font-bold mt-1 text-slate-900" id="resDias">0 dias</h3>
+                        </div>
+                    </div>
+
+                    <div class="grid lg:grid-cols-2 gap-6">
+                        <div class="lg:col-span-1">
+                            <div id="map" class="w-full h-80 rounded-xl shadow-lg border border-slate-200 z-0"></div>
+                        </div>
+                        <div class="lg:col-span-1 bg-white p-6 rounded-xl border border-slate-200 shadow-lg">
+                            <h4 class="text-lg font-bold text-slate-800 mb-4">Composição de Custos</h4>
+                            <div class="space-y-3 text-sm mb-6">
+                                <div class="flex justify-between border-b pb-2"><span>Distância / Consumo:</span> <span class="font-medium"><span id="resDistancia">--</span> / <span id="resConsumoLitros">--</span></span></div>
+                                <div class="flex justify-between border-b pb-2"><span><i data-lucide="droplet" class="inline w-3 h-3 text-orange-500"></i> Custo Diesel:</span> <span class="font-medium text-slate-700" id="resCustoDiesel">--</span></div>
+                                
+                                <!-- NOVO BLOCO MOTORISTA -->
+                                <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                    <p class="text-xs font-bold text-blue-600 uppercase mb-1 flex items-center gap-1"><i data-lucide="user" class="w-3 h-3"></i> Custo Motorista</p>
+                                    <div class="flex justify-between text-xs mb-1"><span>Salário Prop.:</span> <span id="resSalario">--</span></div>
+                                    <div class="flex justify-between text-xs mb-1"><span>Diárias:</span> <span id="resDiarias">--</span></div>
+                                    <div class="flex justify-between font-bold text-blue-800 pt-1 border-t border-blue-200"><span>Total Motorista:</span> <span id="resCustoMotorista">--</span></div>
+                                </div>
+
+                                <div class="flex justify-between pt-2 items-center">
+                                    <span>Lucro Líquido:</span> 
+                                    <span class="font-bold text-emerald-600 text-lg bg-emerald-50 px-2 py-1 rounded" id="resLucro">--</span>
+                                </div>
+                            </div>
+                            <h4 class="text-lg font-bold text-slate-800 mb-3 border-t pt-4">Agendar Viagem</h4>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-xs text-slate-500 block mb-1">Data de Partida</label>
+                                    <input type="datetime-local" id="bookDate" required class="w-full p-2 border rounded-lg text-sm bg-slate-50">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-slate-500 block mb-1">Motorista Responsável</label>
+                                    <select id="bookDriver" required class="w-full p-2 border rounded-lg text-sm bg-slate-50">
+                                        <option value="">Selecione...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button id="btnBook" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg mt-4 transition text-base shadow-md shadow-emerald-200 flex items-center justify-center gap-2">
+                                <i data-lucide="check-circle" class="w-5 h-5"></i> Confirmar Reserva
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CRONOGRAMA -->
+        <section id="view-history" class="max-w-6xl mx-auto space-y-6 hidden fade-in">
+            <h2 class="text-2xl font-bold text-slate-800">Cronograma de Viagens</h2>
+            <div class="grid gap-4" id="historyList"></div>
+        </section>
+
+        <!-- FROTA -->
+        <section id="view-fleet" class="max-w-6xl mx-auto space-y-6 hidden fade-in">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-slate-800">Gestão de Frota</h2>
+                <button onclick="toggleModal('truckModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 text-sm"><i data-lucide="plus" class="w-4 h-4"></i> Adicionar</button>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-50 text-slate-500 border-b"><tr><th class="p-4">Nome</th><th class="p-4">Placa</th><th class="p-4">Status</th><th class="p-4 text-right">Ações</th></tr></thead>
+                    <tbody id="fleetTableBody" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- MOTORISTAS -->
+        <section id="view-drivers" class="max-w-6xl mx-auto space-y-6 hidden fade-in">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-slate-800">Equipe de Pilotos</h2>
+                <button onclick="toggleModal('driverModal')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 text-sm"><i data-lucide="user-plus" class="w-4 h-4"></i> Novo Piloto</button>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6" id="driversGrid"></div>
+        </section>
+
+    </main>
+
+    <!-- MODALS -->
+    <div id="truckModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl p-6 w-96 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">Novo Veículo</h3>
+            <form id="addTruckForm" class="space-y-3">
+                <input type="text" id="newTruckNome" placeholder="Modelo (ex: Volvo FH)" required minlength="2" class="w-full p-2 border rounded-lg text-sm">
+                <input type="text" id="newTruckPlaca" placeholder="Placa" required minlength="7" class="w-full p-2 border rounded-lg text-sm">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" id="newTruckConsumo" step="0.1" placeholder="Km/L" required class="w-full p-2 border rounded-lg text-sm">
+                    <input type="number" id="newTruckTanque" placeholder="Tanque (L)" required class="w-full p-2 border rounded-lg text-sm">
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button type="button" onclick="toggleModal('truckModal')" class="flex-1 bg-slate-100 p-2 rounded-lg text-sm hover:bg-slate-200">Cancelar</button>
+                    <button type="submit" class="flex-1 bg-indigo-600 text-white p-2 rounded-lg text-sm hover:bg-indigo-700">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="driverModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 backdrop-blur-sm">
+        <div class="bg-white rounded-xl p-6 w-96 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">Novo Piloto</h3>
+            <form id="addDriverForm" class="space-y-3">
+                <input type="text" id="newDriverNome" placeholder="Nome Completo" required minlength="2" class="w-full p-2 border rounded-lg text-sm">
+                <input type="text" id="newDriverCnh" placeholder="CNH" required minlength="5" class="w-full p-2 border rounded-lg text-sm">
+                <input type="url" id="newDriverFoto" placeholder="URL Foto (Opcional)" class="w-full p-2 border rounded-lg text-sm">
+                <div class="flex gap-2 mt-4">
+                    <button type="button" onclick="toggleModal('driverModal')" class="flex-1 bg-slate-100 p-2 rounded-lg text-sm hover:bg-slate-200">Cancelar</button>
+                    <button type="submit" class="flex-1 bg-indigo-600 text-white p-2 rounded-lg text-sm hover:bg-indigo-700">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        lucide.createIcons();
+        const API_URL = "http://127.0.0.1:8000";
+        let map, polylineLayer, markers = [];
+        let currentCalc = null;
+        const formatCurrency = (value) => (value || 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+
+        function switchTab(tab) {
+            ['calc', 'fleet', 'history', 'drivers'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`nav-${t}`).classList.replace('tab-active', 'tab-inactive');
+            });
+            document.getElementById(`view-${tab}`).classList.remove('hidden');
+            document.getElementById(`nav-${tab}`).classList.replace('tab-inactive', 'tab-active');
+            if(tab === 'fleet') loadFleet();
+            if(tab === 'drivers') loadDrivers();
+            if(tab === 'history') loadHistory();
+            if(tab === 'calc') setTimeout(() => map?.invalidateSize(), 100);
+        }
+        function toggleModal(id) {
+            const el = document.getElementById(id);
+            el.classList.toggle('hidden'); el.classList.toggle('flex');
+        }
+
+        const renderStatus = (status) => {
+            const colorClass = status === 'Disponível' ? 'status-available' : 'status-busy';
+            return `<div class="flex items-center"><span class="status-dot ${colorClass}"></span><span class="text-xs font-semibold text-slate-600 uppercase">${status}</span></div>`;
+        };
+
+        async function loadFleet() {
+            try {
+                const res = await fetch(`${API_URL}/api/v1/trucks`);
+                const data = await res.json();
+                document.getElementById('fleetTableBody').innerHTML = data.map(t => `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-4 font-medium">${t.nome}</td>
+                        <td class="p-4 text-slate-500">${t.placa}</td>
+                        <td class="p-4">${renderStatus(t.status)}</td>
+                        <td class="p-4 text-right"><button onclick="deleteItem('trucks', '${t.id}')" class="text-rose-500 hover:text-rose-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>
+                    </tr>`).join('');
+                const sel = document.getElementById('veiculoSelect');
+                const oldVal = sel.value;
+                sel.innerHTML = '<option value="" disabled selected>Selecione um veículo...</option>';
+                data.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.nome} (${t.consumo} km/L)</option>`);
+                if(oldVal) sel.value = oldVal;
+                lucide.createIcons();
+            } catch (error) { console.error("Erro Fleet", error); }
+        }
+
+        async function loadDrivers() {
+            try {
+                const res = await fetch(`${API_URL}/api/v1/drivers`);
+                const data = await res.json();
+                document.getElementById('driversGrid').innerHTML = data.map(d => `
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                        <img src="${d.foto_url}" class="w-16 h-16 rounded-full object-cover border-2 border-indigo-100">
+                        <div class="flex-1"><h3 class="font-bold text-slate-800">${d.nome}</h3><p class="text-xs text-slate-500 mb-1">CNH: ${d.cnh}</p>${renderStatus(d.status)}</div>
+                        <button onclick="deleteItem('drivers', '${d.id}')" class="text-slate-300 hover:text-rose-500"><i data-lucide="trash" class="w-4 h-4"></i></button>
+                    </div>`).join('');
+                const sel = document.getElementById('bookDriver');
+                const oldVal = sel.value;
+                sel.innerHTML = '<option value="">Selecione...</option>';
+                data.forEach(d => sel.innerHTML += `<option value="${d.id}">${d.nome}</option>`);
+                if(oldVal) sel.value = oldVal;
+                lucide.createIcons();
+            } catch (error) { console.error("Erro Drivers", error); }
+        }
+
+        async function loadHistory() {
+            try {
+                const res = await fetch(`${API_URL}/api/v1/trips`);
+                const data = await res.json();
+                const container = document.getElementById('historyList');
+                if(data.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 py-10">Sem viagens.</div>'; return; }
+                container.innerHTML = data.map(t => {
+                    const start = new Date(t.data_inicio).toLocaleDateString('pt-BR');
+                    const end = new Date(t.data_fim).toLocaleDateString('pt-BR');
+                    const paradas = t.paradas_previstas || 0;
+                    return `<div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div class="flex items-center gap-4 w-full md:w-auto">
+                            <img src="${t.motorista_foto}" class="w-12 h-12 rounded-full border-2 border-indigo-100 shadow-sm">
+                            <div><h4 class="font-bold text-slate-800">${t.veiculo_nome} (${t.veiculo_placa})</h4><p class="text-xs text-slate-500 flex items-center gap-1"><i data-lucide="user" class="w-3 h-3"></i> ${t.motorista_nome}</p></div>
+                        </div>
+                        <div class="flex-1 w-full md:text-center px-4 mx-4">
+                            <div class="flex items-center justify-center gap-2 text-sm font-medium text-slate-700"><span class="text-indigo-600 font-bold">${t.origem}</span><i data-lucide="arrow-right" class="w-4 h-4 text-slate-400"></i><span class="text-indigo-600 font-bold">${t.destino}</span></div>
+                            <div class="mt-1 flex justify-center gap-2"><span class="inline-flex items-center gap-1 text-xs bg-slate-100 px-2 py-1 rounded text-slate-600"><i data-lucide="calendar" class="w-3 h-3"></i> ${start} - ${end}</span><span class="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded font-bold border border-amber-100"><i data-lucide="fuel" class="w-3 h-3"></i> ${paradas} Paradas</span></div>
+                        </div>
+                        <div class="text-right w-full md:w-auto"><p class="text-lg font-bold text-indigo-600">${formatCurrency(t.preco_final)}</p><span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Confirmada</span></div>
+                    </div>`;
+                }).join('');
+                lucide.createIcons();
+            } catch (error) { console.error("Erro History", error); }
+        }
+
+        async function deleteItem(type, id) {
+            if(confirm('Remover item?')) {
+                await fetch(`${API_URL}/api/v1/${type}/${id}`, {method: 'DELETE'});
+                if(type === 'trucks') loadFleet(); if(type === 'drivers') loadDrivers();
+            }
+        }
+
+        document.getElementById('addTruckForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await fetch(`${API_URL}/api/v1/trucks`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nome: document.getElementById('newTruckNome').value, placa: document.getElementById('newTruckPlaca').value,
+                consumo: parseFloat(document.getElementById('newTruckConsumo').value), tanque: parseInt(document.getElementById('newTruckTanque').value)})});
+            toggleModal('truckModal'); loadFleet(); e.target.reset();
+        });
+
+        document.getElementById('addDriverForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                const res = await fetch(`${API_URL}/api/v1/drivers`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({nome: document.getElementById('newDriverNome').value, cnh: document.getElementById('newDriverCnh').value, foto_url: document.getElementById('newDriverFoto').value})});
+                if (!res.ok) throw new Error((await res.json()).detail);
+                toggleModal('driverModal'); loadDrivers(); e.target.reset();
+            } catch (err) { alert("Erro: " + err.message); }
+        });
+
+        const initMap = () => {
+            if(map) return;
+            map = L.map('map').setView([-14.2, -51.9], 4);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
+        };
+
+        const createCustomIcon = (type) => {
+            let bg = '#4f46e5'; let iconHtml = '';
+            if (type === 'origin') { bg = '#22c55e'; iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>'; }
+            else if (type === 'dest') { bg = '#ef4444'; iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>'; }
+            else if (type === 'gas') { bg = '#f59e0b'; iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22v-8a2 2 0 0 1 2-2h6"/><path d="M8 22v-8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8"/><circle cx="15" cy="9" r="2"/><path d="M18 14h3a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-3v-4Z"/></svg>'; }
+            return L.divIcon({ className: 'custom-icon-div', html: `<div style="background-color:${bg};width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.3);border:2px solid white;">${iconHtml}</div>`, iconSize: [28, 28], iconAnchor: [14, 28], popupAnchor: [0, -28] });
+        };
+
+        document.getElementById('calcForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button'); const origTxt = btn.innerHTML;
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Calculando...`;
+            
+            try {
+                const payload = {
+                    origem: document.getElementById('origem').value, destino: document.getElementById('destino').value,
+                    veiculo_id: document.getElementById('veiculoSelect').value, ida_e_volta: document.getElementById('idaVolta').checked,
+                    preco_diesel_personalizado: parseFloat(document.getElementById('precoDiesel').value),
+                    valor_diaria_personalizado: parseFloat(document.getElementById('valorDiaria').value)
+                };
+                const res = await fetch(`${API_URL}/api/v1/quote`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+                if(!res.ok) throw new Error((await res.json()).detail);
+                
+                const data = await res.json();
+                if (!data.distancia_km || data.distancia_km <= 0) throw new Error("Não foi possível calcular rota.");
+                
+                currentCalc = data;
+                document.getElementById('resultsArea').classList.remove('hidden');
+                const det = data.detalhes_financeiros || {};
+                const paradas = data.paradas_abastecimento_estimadas || det.paradas_abastecimento || 0;
+                currentCalc.paradas_temp = paradas;
+                
+                // Adicionar custo motorista ao objeto para salvar depois
+                currentCalc.custo_motorista_total = det.custo_motorista_total;
+
+                document.getElementById('resPreco').innerText = formatCurrency(data.preco_final_frete);
+                document.getElementById('resParadas').innerText = paradas;
+                document.getElementById('resDias').innerText = `${data.dias_viagem_estimados || 0} dias`;
+                
+                document.getElementById('resDistancia').innerText = `${(data.distancia_km||0).toFixed(0)} km`;
+                document.getElementById('resConsumoLitros').innerText = `${(det.litros_combustivel||0).toFixed(1)} L`;
+                document.getElementById('resCustoDiesel').innerText = formatCurrency(det.custo_combustivel);
+                document.getElementById('resLucro').innerText = formatCurrency(det.lucro_estimado);
+
+                // Novos campos Motorista
+                document.getElementById('resSalario').innerText = formatCurrency(det.custo_motorista_salario);
+                document.getElementById('resDiarias').innerText = formatCurrency(det.custo_motorista_diarias);
+                document.getElementById('resCustoMotorista').innerText = formatCurrency(det.custo_motorista_total);
+
+                initMap(); setTimeout(() => map.invalidateSize(), 200);
+                if(polylineLayer) map.removeLayer(polylineLayer);
+                markers.forEach(m => map.removeLayer(m));
+                markers = [];
+
+                markers.push(L.marker(data.coords_origem, {icon: createCustomIcon('origin')}).addTo(map).bindPopup("<b>Origem</b>"));
+                markers.push(L.marker(data.coords_destino, {icon: createCustomIcon('dest')}).addTo(map).bindPopup("<b>Destino</b>"));
+
+                if (data.route_geometry && paradas > 0) {
+                    const points = data.route_geometry;
+                    const segment = Math.floor(points.length / (paradas + 1));
+                    for(let i=1; i <= paradas; i++) {
+                        const idx = segment * i;
+                        if(points[idx]) markers.push(L.marker(points[idx], {icon: createCustomIcon('gas')}).addTo(map).bindPopup(`<b>Abastecimento #${i}</b>`));
+                    }
+                }
+
+                if(data.route_geometry) {
+                    polylineLayer = L.polyline(data.route_geometry, {color: '#4f46e5', weight: 4}).addTo(map);
+                    map.fitBounds(polylineLayer.getBounds(), {padding: [40,40]});
+                }
+                loadDrivers();
+
+            } catch(err) { alert("Erro: " + err.message); document.getElementById('resultsArea').classList.add('hidden'); } 
+            finally { btn.innerHTML = origTxt; lucide.createIcons(); }
+        });
+
+        document.getElementById('btnBook').addEventListener('click', async () => {
+            if(!currentCalc) return alert("Calcule primeiro.");
+            const dateVal = document.getElementById('bookDate').value;
+            const driverVal = document.getElementById('bookDriver').value;
+            if(!dateVal || !driverVal) return alert("Preencha data e motorista.");
+
+            try {
+                const payload = {
+                    origem: document.getElementById('origem').value, destino: document.getElementById('destino').value,
+                    distancia_km: currentCalc.distancia_km, preco_final: currentCalc.preco_final_frete,
+                    lucro: currentCalc.detalhes_financeiros.lucro_estimado, veiculo_id: currentCalc.veiculo_info.id,
+                    custo_motorista: currentCalc.custo_motorista_total, // NOVO
+                    motorista_id: driverVal, data_inicio: dateVal,
+                    paradas_previstas: currentCalc.paradas_temp || 0
+                };
+                const res = await fetch(`${API_URL}/api/v1/trips/book`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+                if(!res.ok) throw new Error((await res.json()).detail);
+                alert("Agendado com sucesso!"); switchTab('history');
+            } catch(err) { alert("Erro ao agendar: " + err.message); }
+        });
+
+        loadFleet(); loadDrivers(); switchTab('calc');
+    </script>
+</body>
+</html>
